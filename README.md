@@ -2,7 +2,7 @@
 
 Super simple app using HTML5 SQL database.
 
-![moodo_image](http://github.com/orangemug/mugmsg/raw/master/images/screenshot_1.png)
+![moodo_image](https://github.com/orangemug/mugmsg/raw/master/images/screenshot_1.png)
 
 ## Todo
 
