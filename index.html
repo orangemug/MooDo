@@ -1,0 +1,318 @@
+<html>
+<head>
+  <title></title>
+  <link rel="stylesheet" href="css/jquery.mobile-1.0a2.min.css" />
+  <style type='text/css'>
+    /* http://allbackgrounds.com/cow */
+    .moodo-bg {
+      background-image:url('images/cow.jpg');
+      background-attachment:fixed;
+      background-repeat:repeat;
+    }
+  </style>
+</head>
+<body class="ui-mobile-viewport"> 
+  <div data-role="page" id="docs/api/../lists/lists-themes.html" class="ui-page ui-body-c ui-page-active moodo-bg">
+  	<div style="padding-top: 0px" class="ui-body ui-content" data-role="content" role="main">
+  		<ul id="moodo_list" data-inset="true"  class="ui-listview ui-listview-inset ui-corner-all ui-shadow" role="listbox">
+        <li data-role="list-divider" role="heading" tabindex="0" class="ui-li ui-li-divider ui-btn ui-bar-d ui-corner-top ui-btn-up-undefined">MooDo</li>
+  		</ul>
+
+      <div style="position: relative; float: left; width: 100%;">
+        <div style="position: absolute; right: 100px; left: 0px; margin: 12px">
+          <input style="width: 100%" id="moodo_text" name="moodo_text" class="ui-input-text ui-body-null ui-corner-all ui-shadow-inset ui-body-c ui-slider-input">
+        </div>
+        <a id="btnAdd" style="width: 85px; float: right;" data-inline="true" data-role="button" href="#" data-theme="b" class="ui-btn ui-btn-inline ui-btn-corner-all ui-shadow ui-btn-up-b">
+          <span class="ui-btn-inner ui-btn-corner-all">
+            <span class="ui-btn-text">ADD</span>
+          </span>
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+<script src="js/jquery-1.4.4.js"></script>
+<script src="js/ejs/ejs.js"></script>
+<script src="js/ejs/view.js"></script>
+<script>
+
+  MooDo = function(elem, callback) {
+    this.items = []
+    this.elem  = elem
+
+    var thisObj = this;
+    this.db = new MooDo.DB(function(status, db) {
+      // This can quite happily run in the background.
+      db.fetch("*", function(data) {
+          thisObj.add(data)
+      })
+
+      callback(status);
+    })
+  }
+
+/*
+  /// SIMPLE ERROR CONSOLE ///
+  console = {}
+  console.log = function(msg) {
+    alert(msg)
+  }
+/*
+
+  /**
+   * Some config
+   */
+  MooDo.CONFIG = {
+    database: {
+        name: "moodo_db",
+        desc: "MooDo database",
+        size: 1024,
+        drop: false
+    },
+    env: "dev"
+  }
+
+  MooDo.prototype.add = function(obj) {
+    console.log("MOODO:ADD", obj)
+    if( $.isArray(obj) ) {
+      for(var i=0; i<obj.length; i++) {
+        this.items.push(
+          new MooDo.Item(this.db, obj[i])
+        )
+      }
+    } else {
+      this.items.push(new MooDo.Item(this.db, obj));
+    }
+
+    // Render
+    for(var i=0; i<this.items.length; i++) {
+      var item = this.items[i];
+      if(!item.rendered) {
+        item.renderHTML(this.elem);
+      }
+    }
+    this.updateActions();
+  }
+
+  MooDo.prototype.find = function(id, callback) {
+    for(var i=0; i<this.items.length; i++) {
+      if(this.items[i].data.id == id) {
+        if( callback(this.items[i]) == "DESTROY" ) {
+          this.items[i] = null;
+          this.items.splice(i,1);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  MooDo.prototype.remove = function(id) {
+    console.log("MOODO:RMEOVE", id)
+    this.find(id, function(item) {
+      item.destroy();
+      return "DESTROY"
+    });
+  }
+
+  MooDo.prototype.updateActions = function() {
+    var thisObj = this;
+
+    // TODO: Add actions
+    $('.go-list-item').click(function(e) {
+      var id = e.currentTarget.id.split("_")[1];
+      //thisObj.go(id);
+    })
+
+    $('.remove-list-item').click(function(e) {
+      var id = e.currentTarget.id.split("_")[1];
+      thisObj.remove(id);
+    })
+  }
+
+  MooDo.Item = function(db, opts) {
+    this.data = {
+      id:    opts.id || MooDo.Item.uid++,
+      title: opts.title
+    };
+    this.rendered = false;
+
+    // DB bits
+    this.db = db;
+    if(!opts.id) {
+      this.sync();
+    }
+  }
+  MooDo.Item.uid = 0;
+
+  MooDo.Item.prototype.renderHTML = function(elem) {
+    this.rendered = true;
+    var html = new EJS({url: 'templates/item.ejs'}).render(this.data);
+    elem.append(html);
+  }
+
+  MooDo.Item.prototype.sync = function(action) {
+    action = action || "update";
+
+    switch(action) {
+      case "update":
+        console.log("ITEM:ADD")
+        this.db.add(this);
+        break;;
+      case "delete":
+        console.log("ITEM:DELETE")
+        this.db.remove(this);
+        break;;
+    }
+  }
+
+  MooDo.Item.prototype.destroy = function() {
+    $("#item_"+this.data.id).remove();
+    this.sync("delete");
+  }
+
+  /**
+   * DB
+   */
+  MooDo.DB = function(callback) {
+    console.log("DB:CONN");
+    this.conn = window.openDatabase(
+      MooDo.CONFIG.database.name,
+      '1.0',
+      MooDo.CONFIG.database.desc,
+      MooDo.CONFIG.database.size
+    );
+
+    console.log("DB:INIT");
+    thisObj = this;
+    this.initializeSchema(function(status) {
+      callback(status, thisObj)
+    });
+  }
+
+  // Create the table.
+  MooDo.DB.prototype.initializeSchema = function(callback) {
+    this.conn.transaction(
+      function(t) {
+        // Easy way to drop database during dev
+        if (MooDo.CONFIG.database.drop == true) {
+          t.executeSql('DROP TABLE item;',
+            [],
+            function() { console.log("DB:DROP=ok"); }, 
+            function() { console.log("DB:DROP=err");    }
+          );
+        }
+
+        // Always try and create the table ("IF NOT EXISTS").
+        t.executeSql('CREATE TABLE IF NOT EXISTS item(id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL DEFAULT "");',
+          [],
+          function() { callback('ok')  }, 
+          function() { callback('err') }
+        );
+      }
+    );
+  }
+
+  MooDo.DB.prototype.transOk = function(transaction, results) {
+    console.log("TRANS:OK");
+  }
+
+  MooDo.DB.prototype.transErr = function() {
+    // TODO: Handle Error gracefully.
+    console.log("TRANS:ERR");
+  }
+
+  // Add a item
+  MooDo.DB.prototype.add = function(obj) {
+    var thisObj = this;
+    this.conn.transaction(
+      function(transaction) {
+        console.log("DB:INSERT:SQL")
+        transaction.executeSql('insert into item(text) VALUES (?);',
+          [obj.data.title],
+          thisObj.transOk,
+          thisObj.transErr
+        ); 
+      }
+    );
+  }
+
+  // Remove an item
+  MooDo.DB.prototype.remove = function(obj) {
+    var thisObj = this;
+    this.conn.transaction(
+      function(transaction) {
+        console.log("DB:DELETE:SQL")
+        transaction.executeSql('delete from item where id = ?;',
+          [obj.data.id],
+          thisObj.transOk,
+          thisObj.transErr
+        ); 
+      }
+    );
+  }
+
+  // Handle the results 
+  MooDo.DB.prototype.dataHandler = function(transaction, results) {
+      rslt = [];
+
+      // Grab the rows.
+      for (var i=0; i<results.rows.length; i++) { 
+        var row = results.rows.item(i); 
+        rslt.push({
+          id:    row['id'],
+          title: row['text']
+        });
+      }
+
+      return rslt;
+  }
+
+  MooDo.DB.prototype.fetch = function(what, callback) {
+    var thisObj = this;
+    this.conn.transaction(
+      function(t) {
+        t.executeSql('SELECT * FROM item ORDER BY id',
+          [],
+          function(transaction, results) {
+            var dataObj = thisObj.dataHandler(transaction, results)
+            callback(dataObj);
+          },
+          thisObj.transErr
+        );
+      }
+    );
+  }
+
+
+  $(function() {
+    // Setup MooDo
+    var mooDo = new MooDo($('#moodo_list'), function(status) {
+      if(status != 'ok') {
+        alert("Error!")
+      }
+    });
+
+    /*
+    SOME SEED DATA
+    mooDo.add([
+      {title: "go to the shops"},
+      {title: "learn rails"},
+      {title: "learn nginx"},
+      {title: "learn more about javascript "},
+      {title: "setup apche"},
+      {title: "configure chef"}
+    ])
+    */
+
+    // Add UI listeners
+    $("#btnAdd").click(function(e) {
+      mooDo.add({
+        title: $('#moodo_text')[0].value
+      })
+      $('#moodo_text')[0].value = ""
+    });
+
+  })
+</script>
+</html>
